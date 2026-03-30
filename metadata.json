@@ -1,0 +1,5 @@
+{
+  "name": "MedSim: Chẩn Đoán Lâm Sàng",
+  "description": "Ứng dụng mô phỏng lâm sàng tương tác dành cho sinh viên y khoa và bác sĩ, tích hợp AI để phản hồi chuyên môn.",
+  "requestFramePermissions": []
+}
