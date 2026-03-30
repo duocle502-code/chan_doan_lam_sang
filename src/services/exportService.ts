@@ -106,126 +106,167 @@ export const exportToWord = async () => {
 };
 
 
-// ====== PDF EXPORT ======
+// ====== PDF EXPORT (html2canvas approach for Vietnamese support) ======
 export const exportToPDF = async () => {
   const data = loadAppData();
+  const { default: html2canvas } = await import('html2canvas');
   const { default: jsPDF } = await import('jspdf');
-  const { default: autoTable } = await import('jspdf-autotable');
 
-  const doc = new jsPDF('p', 'mm', 'a4');
-  const pageWidth = doc.internal.pageSize.getWidth();
   const today = new Date().toLocaleDateString('vi-VN');
 
-  // Title
-  doc.setFontSize(22);
-  doc.setTextColor(30, 58, 95);
-  doc.text('BAO CAO TIEN DO HOC TAP', pageWidth / 2, 25, { align: 'center' });
+  // Build session table rows HTML
+  const sessionRowsHtml = data.sessions.length > 0
+    ? data.sessions.slice().reverse().map((s, i) => {
+        const scoreColor = s.score >= 80 ? '#16a34a' : s.score >= 50 ? '#ea580c' : '#dc2626';
+        const scoreBg = s.score >= 80 ? '#f0fdf4' : s.score >= 50 ? '#fff7ed' : '#fef2f2';
+        return `<tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 10px 12px; text-align: center; color: #475569;">${i + 1}</td>
+          <td style="padding: 10px 12px; color: #334155;">${new Date(s.date).toLocaleDateString('vi-VN')}</td>
+          <td style="padding: 10px 12px; font-weight: 600; color: #1e293b;">${s.subjectId}</td>
+          <td style="padding: 10px 12px; text-align: center;">
+            <span style="background: ${scoreBg}; color: ${scoreColor}; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 700;">${s.correctAnswers}/${s.totalQuestions} Đúng</span>
+          </td>
+          <td style="padding: 10px 12px; text-align: center; font-weight: 700; color: ${scoreColor}; font-size: 15px;">${s.score}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="5" style="padding: 30px; text-align: center; color: #94a3b8; font-style: italic;">Chưa có dữ liệu thực hành.</td></tr>`;
 
-  doc.setFontSize(10);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`MedSim - Mo phong chan doan lam sang | Ngay xuat: ${today}`, pageWidth / 2, 33, { align: 'center' });
+  // Build weak topics HTML
+  const weakTopicsHtml = data.progress.weakTopics.length > 0
+    ? `<div style="margin-top: 24px;">
+        <h3 style="color: #ea580c; font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+          <span style="background: #fff7ed; padding: 4px 8px; border-radius: 6px;">⚠️</span> CHUYÊN KHOA CẦN CẢI THIỆN
+        </h3>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          ${data.progress.weakTopics.map(t => `<span style="background: #fff7ed; border: 1px solid #fed7aa; color: #c2410c; padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;">▸ ${t}</span>`).join('')}
+        </div>
+      </div>`
+    : '';
 
-  // Divider line 
-  doc.setDrawColor(37, 99, 235);
-  doc.setLineWidth(0.5);
-  doc.line(20, 37, pageWidth - 20, 37);
+  // Build complete HTML report
+  const htmlContent = `
+    <div id="pdf-report" style="width: 780px; padding: 40px; font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: white; color: #1e293b; line-height: 1.5;">
+      
+      <!-- Header -->
+      <div style="text-align: center; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 3px solid #2563eb;">
+        <div style="background: linear-gradient(135deg, #2563eb, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 28px; font-weight: 800; letter-spacing: 1px; margin-bottom: 8px;">
+          BÁO CÁO TIẾN ĐỘ HỌC TẬP
+        </div>
+        <div style="color: #64748b; font-size: 13px;">
+          MedSim — Mô phỏng chẩn đoán lâm sàng &nbsp;|&nbsp; Ngày xuất: ${today}
+        </div>
+      </div>
 
-  // Summary
-  let y = 47;
-  doc.setFontSize(14);
-  doc.setTextColor(37, 99, 235);
-  doc.text('TONG QUAN TIEN DO', 20, y);
-  y += 10;
+      <!-- Stats Grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 28px;">
+        <div style="background: linear-gradient(135deg, #eff6ff, #dbeafe); border: 1px solid #bfdbfe; border-radius: 12px; padding: 18px; text-align: center;">
+          <div style="font-size: 28px; font-weight: 800; color: #2563eb;">${data.progress.totalAttempts}</div>
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px;">Tổng lượt thực hành</div>
+        </div>
+        <div style="background: linear-gradient(135deg, #fff7ed, #ffedd5); border: 1px solid #fed7aa; border-radius: 12px; padding: 18px; text-align: center;">
+          <div style="font-size: 28px; font-weight: 800; color: #ea580c;">${Math.round(data.progress.averageScore)}%</div>
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px;">Điểm trung bình</div>
+        </div>
+        <div style="background: linear-gradient(135deg, #fef2f2, #fecaca); border: 1px solid #fca5a5; border-radius: 12px; padding: 18px; text-align: center;">
+          <div style="font-size: 28px; font-weight: 800; color: #dc2626;">${data.progress.streakDays}</div>
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px;">Chuỗi ngày học</div>
+        </div>
+        <div style="background: linear-gradient(135deg, #f0fdf4, #dcfce7); border: 1px solid #86efac; border-radius: 12px; padding: 18px; text-align: center;">
+          <div style="font-size: 28px; font-weight: 800; color: #16a34a;">${data.cases.length}</div>
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px;">Ca bệnh sẵn có</div>
+        </div>
+      </div>
 
-  doc.setFontSize(11);
-  doc.setTextColor(30, 41, 59);
-  const summaryItems = [
-    `Tong luot thuc hanh: ${data.progress.totalAttempts}`,
-    `Diem trung binh: ${Math.round(data.progress.averageScore)}%`,
-    `Chuoi ngay hoc: ${data.progress.streakDays} ngay`,
-    `Tong ca benh co san: ${data.cases.length}`,
-  ];
-  summaryItems.forEach(item => {
-    doc.text(`•  ${item}`, 25, y);
-    y += 7;
-  });
+      ${weakTopicsHtml}
 
-  // Weak topics
-  if (data.progress.weakTopics.length > 0) {
-    y += 5;
-    doc.setFontSize(14);
-    doc.setTextColor(234, 88, 12);
-    doc.text('CHUYEN KHOA CAN CAI THIEN', 20, y);
-    y += 10;
-    doc.setFontSize(11);
-    data.progress.weakTopics.forEach(topic => {
-      doc.text(`▸  ${topic}`, 25, y);
-      y += 7;
+      <!-- Session History Table -->
+      <div style="margin-top: 28px;">
+        <h3 style="color: #2563eb; font-size: 16px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+          <span style="background: #eff6ff; padding: 4px 8px; border-radius: 6px;">📋</span> LỊCH SỬ THỰC HÀNH
+        </h3>
+        <table style="width: 100%; border-collapse: collapse; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0;">
+          <thead>
+            <tr style="background: linear-gradient(135deg, #2563eb, #1d4ed8);">
+              <th style="padding: 12px; color: white; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; text-align: center; font-weight: 700;">STT</th>
+              <th style="padding: 12px; color: white; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; font-weight: 700;">Ngày</th>
+              <th style="padding: 12px; color: white; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; font-weight: 700;">Chuyên khoa</th>
+              <th style="padding: 12px; color: white; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; text-align: center; font-weight: 700;">Kết quả</th>
+              <th style="padding: 12px; color: white; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; text-align: center; font-weight: 700;">Điểm</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${sessionRowsHtml}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div style="margin-top: 36px; padding-top: 16px; border-top: 1px solid #e2e8f0; text-align: center; color: #94a3b8; font-size: 11px; font-style: italic;">
+        — Xuất từ MedSim © 2026 —
+      </div>
+    </div>
+  `;
+
+  // Create a hidden container and render the HTML
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.zIndex = '-1';
+  container.innerHTML = htmlContent;
+  document.body.appendChild(container);
+
+  const reportElement = container.querySelector('#pdf-report') as HTMLElement;
+
+  try {
+    // Render HTML to canvas using the browser's font engine (full Vietnamese support)
+    const canvas = await html2canvas(reportElement, {
+      scale: 2, // High resolution
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
     });
+
+    // Calculate PDF dimensions from canvas
+    const imgData = canvas.toDataURL('image/png');
+    const pdfWidth = 210; // A4 width in mm
+    const pdfMargin = 10;
+    const contentWidth = pdfWidth - (pdfMargin * 2);
+    const imgHeight = (canvas.height * contentWidth) / canvas.width;
+    const pageHeight = 297; // A4 height in mm
+    const contentHeight = pageHeight - (pdfMargin * 2);
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+
+    // Handle multi-page: if content is taller than one page
+    let heightRemaining = imgHeight;
+    let position = pdfMargin;
+    let page = 0;
+
+    while (heightRemaining > 0) {
+      if (page > 0) {
+        doc.addPage();
+      }
+      
+      // Use negative y offset to "scroll" through the image
+      doc.addImage(
+        imgData,
+        'PNG',
+        pdfMargin,
+        position - (page * contentHeight),
+        contentWidth,
+        imgHeight
+      );
+      
+      heightRemaining -= contentHeight;
+      page++;
+    }
+
+    doc.save(`MedSim_BaoCao_${new Date().toISOString().split('T')[0]}.pdf`);
+  } finally {
+    // Clean up the hidden container
+    document.body.removeChild(container);
   }
-
-  // Session history table
-  y += 8;
-  doc.setFontSize(14);
-  doc.setTextColor(37, 99, 235);
-  doc.text('LICH SU THUC HANH', 20, y);
-  y += 5;
-
-  if (data.sessions.length > 0) {
-    const tableData = data.sessions.slice().reverse().map((s, i) => [
-      `${i + 1}`,
-      new Date(s.date).toLocaleDateString('vi-VN'),
-      s.subjectId,
-      `${s.correctAnswers}/${s.totalQuestions} Dung`,
-      `${s.score}`,
-    ]);
-
-    autoTable(doc, {
-      startY: y,
-      head: [['STT', 'Ngay', 'Chuyen khoa', 'Ket qua', 'Diem']],
-      body: tableData,
-      styles: {
-        fontSize: 10,
-        cellPadding: 4,
-      },
-      headStyles: {
-        fillColor: [37, 99, 235],
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        halign: 'center',
-      },
-      alternateRowStyles: {
-        fillColor: [241, 245, 249],
-      },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: 15 },
-        3: { halign: 'center' },
-        4: { halign: 'center', cellWidth: 20 },
-      },
-      didParseCell: (hookData: any) => {
-        if (hookData.section === 'body' && hookData.column.index === 4) {
-          const score = parseInt(hookData.cell.raw as string);
-          if (score >= 80) hookData.cell.styles.textColor = [22, 163, 74];
-          else if (score >= 50) hookData.cell.styles.textColor = [234, 88, 12];
-          else hookData.cell.styles.textColor = [220, 38, 38];
-          hookData.cell.styles.fontStyle = 'bold';
-        }
-      },
-    });
-  } else {
-    y += 10;
-    doc.setFontSize(11);
-    doc.setTextColor(148, 163, 184);
-    doc.text('Chua co du lieu thuc hanh.', pageWidth / 2, y, { align: 'center' });
-  }
-
-  // Footer
-  const pageHeight = doc.internal.pageSize.getHeight();
-  doc.setFontSize(9);
-  doc.setTextColor(148, 163, 184);
-  doc.text('Xuat tu MedSim © 2026', pageWidth / 2, pageHeight - 10, { align: 'center' });
-
-  doc.save(`MedSim_BaoCao_${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
 
