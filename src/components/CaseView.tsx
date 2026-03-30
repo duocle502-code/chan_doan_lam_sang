@@ -32,6 +32,7 @@ export const CaseView: React.FC<CaseViewProps> = ({ clinicalCase, onComplete, on
     if (selectedDiagnosis && selectedTreatment) {
       onComplete(selectedDiagnosis, selectedTreatment, clinicalCase.explanation);
       setShowResults(true);
+      setStep(4);
     }
   };
 
