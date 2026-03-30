@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Layout } from './components/Layout';
 import { CaseView } from './components/CaseView';
 import { AppData, ClinicalCase, Settings } from './types';
 import { loadAppData, saveAppData, updateSettings, addSession, exportData, importData } from './services/storage';
 import { callGeminiAI, getMedicalExplanationPrompt } from './services/gemini';
+import { exportToWord, exportToPDF, exportToJSON } from './services/exportService';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Stethoscope, Thermometer, Baby, Key, ShieldCheck, ChevronRight, BarChart2, MessageSquare, AlertCircle, CheckCircle2, Trophy, Flame, Target, BookOpen, Search, Filter, Settings as SettingsIcon, Download, Upload, Trash2, X, Sun, Moon } from 'lucide-react';
+import { Heart, Stethoscope, Thermometer, Baby, Key, ShieldCheck, ChevronRight, BarChart2, MessageSquare, AlertCircle, CheckCircle2, Trophy, Flame, Target, BookOpen, Search, Filter, Settings as SettingsIcon, Download, Upload, Trash2, X, Sun, Moon, FileText, FileDown, FileJson } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { cn } from './components/Layout';
 
@@ -18,6 +19,39 @@ export default function App() {
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [specialtyFilter, setSpecialtyFilter] = useState('all');
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close export menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleExport = async (format: 'word' | 'pdf' | 'json') => {
+    setShowExportMenu(false);
+    try {
+      if (format === 'word') await exportToWord();
+      else if (format === 'pdf') await exportToPDF();
+      else exportToJSON();
+      Swal.fire({
+        icon: 'success',
+        title: 'Xuất thành công!',
+        text: `Đã xuất báo cáo dạng ${format === 'word' ? 'Word (.docx)' : format === 'pdf' ? 'PDF' : 'JSON'}`,
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000
+      });
+    } catch (err: any) {
+      Swal.fire('Lỗi xuất dữ liệu', err.message || 'Không thể xuất được', 'error');
+    }
+  };
 
   useEffect(() => {
     saveAppData(data);
@@ -318,10 +352,63 @@ export default function App() {
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold">Tiến độ học tập</h2>
               <div className="flex items-center gap-2">
-                <button onClick={exportData} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors">
-                  <Download size={18} />
-                  Xuất dữ liệu
-                </button>
+                <div className="relative" ref={exportMenuRef}>
+                  <button 
+                    onClick={() => setShowExportMenu(!showExportMenu)} 
+                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <Download size={18} />
+                    Xuất dữ liệu
+                    <ChevronRight size={14} className={cn("transition-transform duration-200", showExportMenu && "rotate-90")} />
+                  </button>
+                  {showExportMenu && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl z-50 overflow-hidden"
+                    >
+                      <div className="p-1.5 space-y-0.5">
+                        <button
+                          onClick={() => handleExport('word')}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/20 text-slate-700 dark:text-slate-300 transition-colors group"
+                        >
+                          <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                            <FileText size={16} />
+                          </div>
+                          <div className="text-left">
+                            <p className="font-bold">Word (.docx)</p>
+                            <p className="text-[10px] text-slate-400">Báo cáo định dạng văn bản</p>
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => handleExport('pdf')}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 text-slate-700 dark:text-slate-300 transition-colors group"
+                        >
+                          <div className="p-1.5 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 group-hover:bg-red-200 dark:group-hover:bg-red-900/50 transition-colors">
+                            <FileDown size={16} />
+                          </div>
+                          <div className="text-left">
+                            <p className="font-bold">PDF</p>
+                            <p className="text-[10px] text-slate-400">Báo cáo dạng in ấn</p>
+                          </div>
+                        </button>
+                        <div className="border-t border-slate-100 dark:border-slate-700 my-1" />
+                        <button
+                          onClick={() => handleExport('json')}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium hover:bg-green-50 dark:hover:bg-green-900/20 text-slate-700 dark:text-slate-300 transition-colors group"
+                        >
+                          <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 group-hover:bg-green-200 dark:group-hover:bg-green-900/50 transition-colors">
+                            <FileJson size={16} />
+                          </div>
+                          <div className="text-left">
+                            <p className="font-bold">JSON (Backup)</p>
+                            <p className="text-[10px] text-slate-400">Sao lưu toàn bộ dữ liệu</p>
+                          </div>
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
                 <label className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold hover:bg-slate-50 transition-colors cursor-pointer">
                   <Upload size={18} />
                   Nhập dữ liệu
