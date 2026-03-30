@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Layout } from './components/Layout';
 import { CaseView } from './components/CaseView';
-import { AppData, ClinicalCase, Settings } from './types';
-import { loadAppData, saveAppData, updateSettings, addSession, exportData, importData } from './services/storage';
+import { SessionReview } from './components/SessionReview';
+import { AppData, ClinicalCase, Session, Settings } from './types';
+import { loadAppData, saveAppData, updateSettings, addSession, updateSession, exportData, importData } from './services/storage';
 import { callGeminiAI, getMedicalExplanationPrompt } from './services/gemini';
 import { exportToWord, exportToPDF, exportToJSON } from './services/exportService';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Stethoscope, Thermometer, Baby, Key, ShieldCheck, ChevronRight, BarChart2, MessageSquare, AlertCircle, CheckCircle2, Trophy, Flame, Target, BookOpen, Search, Filter, Settings as SettingsIcon, Download, Upload, Trash2, X, Sun, Moon, FileText, FileDown, FileJson } from 'lucide-react';
+import { Heart, Stethoscope, Thermometer, Baby, Key, ShieldCheck, ChevronRight, BarChart2, MessageSquare, AlertCircle, CheckCircle2, Trophy, Flame, Target, BookOpen, Search, Filter, Settings as SettingsIcon, Download, Upload, Trash2, X, Sun, Moon, FileText, FileDown, FileJson, Eye } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { cn } from './components/Layout';
 
@@ -19,6 +20,7 @@ export default function App() {
   const [aiExplanation, setAiExplanation] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [specialtyFilter, setSpecialtyFilter] = useState('all');
+  const [reviewSession, setReviewSession] = useState<Session | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
@@ -83,17 +85,22 @@ export default function App() {
 
     const score = (diagnosisId === selectedCase.correctDiagnosis ? 50 : 0) + (treatmentId === selectedCase.correctTreatment ? 50 : 0);
     
+    const sessionId = Math.random().toString(36).substr(2, 9);
     addSession({
-      id: Math.random().toString(36).substr(2, 9),
+      id: sessionId,
       subjectId: selectedCase.specialty,
       score,
       totalQuestions: 2,
       correctAnswers: (diagnosisId === selectedCase.correctDiagnosis ? 1 : 0) + (treatmentId === selectedCase.correctTreatment ? 1 : 0),
-      timeSpent: 0, // Simplified
-      date: new Date().toISOString()
+      timeSpent: 0,
+      date: new Date().toISOString(),
+      caseId: selectedCase.id,
+      caseTitle: selectedCase.title,
+      selectedDiagnosisId: diagnosisId,
+      selectedTreatmentId: treatmentId,
     });
 
-    setData(loadAppData()); // Refresh data from storage
+    setData(loadAppData());
 
     if (data.settings.geminiApiKey) {
       setIsGeneratingExplanation(true);
@@ -108,13 +115,19 @@ export default function App() {
         );
         const result = await callGeminiAI(prompt, data.settings.geminiApiKey);
         setAiExplanation(result);
+        // Save AI explanation to session for future review
+        updateSession(sessionId, { aiExplanation: result });
+        setData(loadAppData());
       } catch (error: any) {
         Swal.fire('Lỗi AI', error.message || 'Không thể kết nối với Gemini AI', 'error');
       } finally {
         setIsGeneratingExplanation(false);
       }
     } else {
-      setAiExplanation(`### Giải thích lâm sàng\n\n${explanation}\n\n*Lưu ý: Nhập Gemini API Key trong phần Cài đặt để nhận phản hồi chuyên sâu từ AI.*`);
+      const fallback = `### Giải thích lâm sàng\n\n${explanation}\n\n*Lưu ý: Nhập Gemini API Key trong phần Cài đặt để nhận phản hồi chuyên sâu từ AI.*`;
+      setAiExplanation(fallback);
+      updateSession(sessionId, { aiExplanation: fallback });
+      setData(loadAppData());
     }
   };
 
@@ -439,17 +452,23 @@ export default function App() {
                       <thead>
                         <tr className="text-xs text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-700">
                           <th className="pb-4 font-bold">Ngày</th>
-                          <th className="pb-4 font-bold">Chuyên khoa</th>
+                          <th className="pb-4 font-bold">Ca bệnh</th>
                           <th className="pb-4 font-bold">Kết quả</th>
                           <th className="pb-4 font-bold">Điểm</th>
+                          <th className="pb-4 font-bold text-center">Xem lại</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
                         {data.sessions.length > 0 ? (
                           data.sessions.slice().reverse().map((s) => (
-                            <tr key={s.id} className="group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                            <tr key={s.id} className="group hover:bg-blue-50/50 dark:hover:bg-slate-900/50 transition-colors cursor-pointer" onClick={() => setReviewSession(s)}>
                               <td className="py-4 text-sm">{new Date(s.date).toLocaleDateString('vi-VN')}</td>
-                              <td className="py-4 text-sm font-bold">{s.subjectId}</td>
+                              <td className="py-4 text-sm">
+                                <div>
+                                  <span className="font-bold">{s.caseTitle || s.subjectId}</span>
+                                  {s.caseTitle && <span className="block text-[11px] text-slate-400">{s.subjectId}</span>}
+                                </div>
+                              </td>
                               <td className="py-4 text-sm">
                                 <span className={cn("px-2 py-1 rounded-lg text-[10px] font-bold uppercase", 
                                   s.score >= 80 ? "bg-green-100 text-green-600" : s.score >= 50 ? "bg-orange-100 text-orange-600" : "bg-red-100 text-red-600"
@@ -458,11 +477,20 @@ export default function App() {
                                 </span>
                               </td>
                               <td className="py-4 text-sm font-bold">{s.score}</td>
+                              <td className="py-4 text-center">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setReviewSession(s); }}
+                                  className="p-2 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors inline-flex items-center gap-1 text-xs font-bold"
+                                >
+                                  <Eye size={16} />
+                                  <span className="hidden sm:inline">Xem</span>
+                                </button>
+                              </td>
                             </tr>
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={4} className="py-10 text-center text-slate-400">Chưa có dữ liệu thực hành.</td>
+                            <td colSpan={5} className="py-10 text-center text-slate-400">Chưa có dữ liệu thực hành.</td>
                           </tr>
                         )}
                       </tbody>
@@ -670,6 +698,17 @@ export default function App() {
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Session Review Modal */}
+      <AnimatePresence>
+        {reviewSession && (
+          <SessionReview
+            session={reviewSession}
+            clinicalCase={data.cases.find(c => c.id === reviewSession.caseId)}
+            onClose={() => setReviewSession(null)}
+          />
         )}
       </AnimatePresence>
     </Layout>
