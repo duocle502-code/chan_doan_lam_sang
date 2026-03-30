@@ -55,6 +55,12 @@ export interface Session {
   correctAnswers: number;
   timeSpent: number;
   date: string;
+  // Review data (optional for backward compatibility)
+  caseId?: string;
+  caseTitle?: string;
+  selectedDiagnosisId?: string;
+  selectedTreatmentId?: string;
+  aiExplanation?: string;
 }
 
 export interface Progress {
