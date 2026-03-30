@@ -68,6 +68,15 @@ export const addSession = (session: Session) => {
   saveAppData(data);
 };
 
+export const updateSession = (sessionId: string, updates: Partial<Session>) => {
+  const data = loadAppData();
+  const idx = data.sessions.findIndex(s => s.id === sessionId);
+  if (idx !== -1) {
+    data.sessions[idx] = { ...data.sessions[idx], ...updates };
+    saveAppData(data);
+  }
+};
+
 export const exportData = () => {
   const data = loadAppData();
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
